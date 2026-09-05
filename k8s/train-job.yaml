@@ -1,0 +1,50 @@
+# One-shot trainer. Writes joblib + model cards onto the models PVC,
+# then PUTs them to MODEL_STORAGE_BASE_URL if that is set.
+# Re-run: kubectl delete job netanomaly-train && kubectl apply -f k8s/train-job.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: netanomaly-train
+  labels:
+    app: netanomaly-train
+spec:
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app: netanomaly-train
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsUser: 1000
+        runAsNonRoot: true
+        fsGroup: 1000
+      containers:
+        - name: trainer
+          image: ghcr.io/OWNER/netanomaly-api:latest
+          command: ["python", "-m", "src.models.train_job"]
+          envFrom:
+            - configMapRef:
+                name: netanomaly-config
+            - secretRef:
+                name: netanomaly-secrets
+                optional: true
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2"
+              memory: "2Gi"
+          volumeMounts:
+            - name: models
+              mountPath: /app/models
+            - name: data
+              mountPath: /app/data
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: netanomaly-models
+        - name: data
+          emptyDir: {}

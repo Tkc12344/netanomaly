@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: netanomaly-config
+data:
+  MODELS_DIR: "/app/models"
+  DATA_RAW_DIR: "/app/data/raw"
+  DATA_PROCESSED_DIR: "/app/data/processed"
+  TRAIN_ROWS: "8000"
+  TRAIN_FILES: "2"
+  # Optional HTTP(S) prefix that serves the artifact filenames
+  # (classifier.joblib, feature_columns.json, ...). Leave empty to
+  # rely on the training Job writing the models PVC.
+  MODEL_STORAGE_BASE_URL: ""

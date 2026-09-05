@@ -1,0 +1,12 @@
+data/raw
+data/processed
+models
+notebooks
+tests
+.git
+.github
+__pycache__
+*.pyc
+.pytest_cache
+.env
+terraform/.terraform
