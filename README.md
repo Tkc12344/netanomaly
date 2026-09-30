@@ -12,7 +12,7 @@ Design, split rules, and artifact flow: [docs/ARCHITECTURE.md](docs/ARCHITECTURE
 | Preprocess | Time sort, leakage-ID drop, binary `Label` plus original `Attack_Type`. The holdout keeps the natural class mix. |
 | Classifier | Dummy (most-frequent), scaled logistic regression, Random Forest, Gradient Boosting. Sample weights on the **train** fold only. Per-attack recall on a binary decision. |
 | Forecaster | Random Forest regressor, rolling stats grouped by source file, chronological split, persist (last-value) baseline. |
-| API | `/classify`, `/forecast`, `/explain`. Missing features are 422. `/ready` is 503 until a classifier is loaded. |
+| API | `/classify`, `/forecast`, `/explain`. Missing features are 422. `/ready` is 503 until a classifier is loaded. Console at `/ui`. |
 | Deploy | Training Job + PVC (or `MODEL_STORAGE_BASE_URL`). CI publishes to GHCR. |
 
 The Transformer in `src/models/transformer.py` is an experiment. Trees outperform it on this tabular data; the API does not load it.
@@ -29,6 +29,7 @@ pip install -r requirements.txt
 make hf-data      # strided 20k sample from Hugging Face → data/raw/
 make pipeline     # preprocess, train, write models/ + model cards
 make api          # uvicorn on :8000
+# open http://localhost:8000/ui
 ```
 
 Offline / CI without Hugging Face: `make synthetic-data` then `make pipeline`.
@@ -80,6 +81,7 @@ Base URL: `http://localhost:8000`. Interactive docs: `/docs`.
 | Method | Path | Behaviour |
 |---|---|---|
 | GET | `/` | Service name, version, path hints. |
+| GET | `/ui` | Operator console (classify / forecast / explain). |
 | GET | `/health` | Liveness. Always 200. `ready` is whether a classifier is loaded. |
 | GET | `/ready` | 503 until `classifier.joblib` + feature columns load. Kubernetes readiness probe. |
 | GET | `/schema` | Required feature names for `/classify` and `/forecast`. |

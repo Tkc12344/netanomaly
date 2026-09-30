@@ -2,6 +2,17 @@ def _complete(columns, fill=1.0):
     return {col: float(fill) for col in columns}
 
 
+def test_ui_console_is_served(empty_api_client):
+    page = empty_api_client.get("/ui")
+    assert page.status_code == 200
+    assert "text/html" in page.headers["content-type"]
+    assert b"NET" in page.content
+    css = empty_api_client.get("/ui-static/console.css")
+    js = empty_api_client.get("/ui-static/console.js")
+    assert css.status_code == 200
+    assert js.status_code == 200
+
+
 def test_health_is_liveness_without_models(empty_api_client):
     resp = empty_api_client.get("/health")
     assert resp.status_code == 200
@@ -85,6 +96,7 @@ def test_root_and_schema(api_client, trained_artifacts):
     root = api_client.get("/")
     assert root.status_code == 200
     assert root.json()["service"] == "netanomaly"
+    assert root.json()["ui"] == "/ui"
     schema = api_client.get("/schema")
     assert schema.status_code == 200
     body = schema.json()

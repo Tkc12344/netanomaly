@@ -75,7 +75,7 @@ Training and serving share one image. The image contains **code only**. Artifact
 | `src/models/sync.py` | HTTP pull/push + wait for local files |
 | `src/models/train_job.py` | Cluster/compose trainer |
 | `src/models/latency.py` | Per-row inference timing |
-| `src/api/main.py` | HTTP surface |
+| `src/api/main.py` | HTTP surface + `/ui` console |
 | `k8s/` | PVC, Job, Deployment, Service, HPA |
 | `terraform/` | EKS scaffold; registry is GHCR |
 

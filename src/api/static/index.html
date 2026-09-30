@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Netanomaly console</title>
+    <link rel="stylesheet" href="/ui-static/console.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="top">
+        <div class="brand">
+          <span class="mark">NET<span class="dot">·</span>ANOMALY</span>
+          <span class="sub">flow classify · volume forecast</span>
+        </div>
+        <div class="top-meta">
+          <span id="status-pill" class="pill wait">checking</span>
+          <span id="version-label" class="quiet">—</span>
+        </div>
+      </header>
+
+      <aside class="rail">
+        <h2>Service</h2>
+        <dl id="status-dl" class="facts">
+          <div><dt>API</dt><dd id="fact-api">…</dd></div>
+          <div><dt>Classifier</dt><dd id="fact-clf">…</dd></div>
+          <div><dt>Forecaster</dt><dd id="fact-fc">…</dd></div>
+          <div><dt>Model</dt><dd id="fact-ver">—</dd></div>
+        </dl>
+
+        <label class="field">
+          <span>API key</span>
+          <input id="api-key" type="password" autocomplete="off" placeholder="if API_KEY is set" />
+        </label>
+        <p class="hint">Stored in this browser only. Sent as <code>X-API-Key</code> on POST.</p>
+
+        <h2>Vector</h2>
+        <div class="stack-btns">
+          <button type="button" id="btn-fill" class="btn ghost">Fill ones</button>
+          <button type="button" id="btn-clear" class="btn ghost">Clear</button>
+        </div>
+        <label class="field">
+          <span>Paste JSON</span>
+          <textarea id="json-in" rows="6" placeholder='{"features": {"Flow_Duration": 1}}'></textarea>
+        </label>
+        <button type="button" id="btn-apply-json" class="btn ghost">Apply JSON</button>
+        <p id="vector-meta" class="hint"></p>
+      </aside>
+
+      <main class="stage">
+        <nav class="tabs" role="tablist">
+          <button type="button" class="tab on" data-tab="classify">Classify</button>
+          <button type="button" class="tab" data-tab="forecast">Forecast</button>
+          <button type="button" class="tab" data-tab="explain">Explain</button>
+        </nav>
+
+        <p id="banner" class="banner" hidden></p>
+
+        <label class="search">
+          <span>Filter columns</span>
+          <input id="filter" type="search" placeholder="Duration, Fwd, …" />
+        </label>
+
+        <form id="flow-form">
+          <div id="feature-grid" class="grid"></div>
+          <div class="actions">
+            <button type="submit" id="btn-run" class="btn primary">Run classify</button>
+            <span id="busy" class="quiet" hidden>working…</span>
+          </div>
+        </form>
+
+        <section id="result" class="result" hidden></section>
+      </main>
+    </div>
+    <script src="/ui-static/console.js"></script>
+  </body>
+</html>

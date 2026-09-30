@@ -8,6 +8,7 @@ Run locally:
 
 Endpoints:
     GET  /           -> service info
+    GET  /ui         -> operator console
     GET  /health     -> liveness (process up)
     GET  /ready      -> 503 unless the classifier is loaded
     GET  /schema     -> required feature names for the loaded models
@@ -23,10 +24,13 @@ import math
 import os
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import joblib
 import pandas as pd
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from sklearn.pipeline import Pipeline
 
 from src import config
@@ -46,6 +50,7 @@ from src.models.explain import explain_instance
 
 logger = logging.getLogger(__name__)
 API_VERSION = "0.3.0"
+STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 MODELS: dict = {
     "classifier": None,
@@ -143,7 +148,9 @@ app = FastAPI(
 async def access_log(request: Request, call_next):
     start = time.perf_counter()
     response = await call_next(request)
-    if request.url.path not in ("/health", "/ready"):
+    if request.url.path not in ("/health", "/ready") and not request.url.path.startswith(
+        "/ui-static"
+    ):
         logger.info(
             "%s %s %s %.1fms",
             request.method,
@@ -211,7 +218,16 @@ def root() -> ServiceInfoResponse:
         health="/health",
         ready="/ready",
         schema="/schema",
+        ui="/ui",
     )
+
+
+@app.get("/ui", include_in_schema=False)
+def console_ui() -> FileResponse:
+    index = STATIC_DIR / "index.html"
+    if not index.exists():
+        raise HTTPException(404, "UI files are missing from this image.")
+    return FileResponse(index)
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -332,3 +348,6 @@ def explain(
         model_version=_model_version(MODELS["classifier_card"]),
         method=method,
     )
+
+
+app.mount("/ui-static", StaticFiles(directory=STATIC_DIR), name="ui-static")

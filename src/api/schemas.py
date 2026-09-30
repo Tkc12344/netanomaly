@@ -68,3 +68,4 @@ class ServiceInfoResponse(BaseModel):
     health: str
     ready: str
     schema: str
+    ui: str
