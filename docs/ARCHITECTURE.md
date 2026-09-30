@@ -1,8 +1,6 @@
 # Architecture
 
-This document describes the system as implemented — not the thesis outline, and not a future design. It is the contract for how data, models, and the API fit together after the validity, service, and deploy work in this repo.
-
-Source thesis: Tiwari, A. (2026). *Network Anomaly Detection and Traffic Forecasting Using Machine Learning and Sequence Models.* CSUN MSc.
+How data, models, and the API fit together in this project.
 
 ## 1. Purpose
 
@@ -11,14 +9,14 @@ Netanomaly does two jobs on CICIDS-shaped **flow records** (one row = one bidire
 1. **Anomaly detection** — binary classification. `BENIGN` is 0; every other `Label` is 1. Original attack names are kept as `Attack_Type` so recall can be reported per class even though the served decision is binary.
 2. **Traffic forecasting** — one-step regression of `Total_Length_of_Fwd_Packets`. A prediction at row *t* uses current-state features (including current volume) to estimate volume at *t + horizon* **inside the same source file**.
 
-The served production models are classical sklearn artifacts (usually Random Forest for classification, Random Forest regressor for forecasting). A small Transformer exists only to reproduce the thesis result that it underperforms trees on this tabular data. It is not loaded by the API.
+The served models are classical sklearn artifacts (usually Random Forest for classification, Random Forest regressor for forecasting). A small Transformer exists as an optional experiment; it underperforms trees on this tabular data and is not loaded by the API.
 
 ## 2. System context
 
 ```mermaid
 flowchart LR
   subgraph sources [Sources]
-    CICIDS[CICIDS2017 CSVs]
+    HF["HuggingFace /rows"]
     SYN[Synthetic generator]
   end
 
@@ -41,7 +39,7 @@ flowchart LR
     DISK[local models/]
   end
 
-  CICIDS --> LOAD
+  HF --> LOAD
   SYN --> LOAD
   LOAD --> PRE
   PRE --> CLF
@@ -65,6 +63,7 @@ Training and serving share one image. The image contains **code only**. Artifact
 |---|---|
 | `src/config.py` | Paths, leakage columns, non-feature columns, horizon, random seed |
 | `src/data/load.py` | Concatenate `data/raw/*.csv`; stamp `Source_File` |
+| `src/data/fetch_huggingface.py` | Paginate HF `/rows` (100/page) into `data/raw/` |
 | `src/data/preprocess.py` | Column normalize, time sort, clean, labels, drop IDs |
 | `src/data/generate_synthetic.py` | Overlapping, time-ordered CICIDS-shaped rows |
 | `src/features/engineer.py` | Grouped rolling stats; group-aware target shift |
@@ -72,7 +71,7 @@ Training and serving share one image. The image contains **code only**. Artifact
 | `src/models/forecaster.py` | RF regressor; persist baseline |
 | `src/models/transformer.py` | Optional sequence model; not served |
 | `src/models/explain.py` | Instance contributions (coefficients or SHAP) |
-| `src/models/artifacts.py` | `*_card.json` next to each joblib |
+| `src/models/artifacts.py` | `*_card.json` next to each joblib; pin `n_jobs=1` on save |
 | `src/models/sync.py` | HTTP pull/push + wait for local files |
 | `src/models/train_job.py` | Cluster/compose trainer |
 | `src/models/latency.py` | Per-row inference timing |
@@ -104,6 +103,8 @@ flowchart TD
 ```
 
 ### 4.1 Load
+
+`python -m src.data.fetch_huggingface` (or `make hf-data`) writes `cicids2017_huggingface.csv` from Hugging Face datasets-server `/rows` (`San0160/CICIDS-2017`, 100 rows per call). The default is a **strided** 20k-row sample: sequential `offset=0` is Monday BENIGN only. There is no capture timestamp in this dump; the fetcher assigns a proxy `Timestamp` from `row_idx` (concatenation order). Synthetic generation remains the offline/CI path.
 
 Every `*.csv` under `DATA_RAW_DIR` is read and stacked. `Source_File` is the basename. That column is the group key for rolling stats and for the forecast target shift, so Monday’s last row cannot become Tuesday’s first.
 
@@ -268,6 +269,10 @@ On `main` after tests:
 | `MODEL_STORAGE_BASE_URL` | empty | HTTP prefix for sync |
 | `MODEL_STORAGE_TOKEN` | empty | Bearer token for sync |
 | `TRAIN_ROWS` / `TRAIN_FILES` | 8000 / 2 | Synthetic size inside the k8s Job |
+| `DATA_SOURCE` | `synthetic` | `huggingface` fetches `/rows` when `data/raw` is empty |
+| `HF_MAX_ROWS` | 20000 | Row cap for the Hugging Face fetch (`0` = full split) |
+| `N_ESTIMATORS` | 200 | Trees for RF classifier / forecaster |
+| `API_KEY` | empty | When set, POST routes require Bearer or `X-API-Key` |
 
 Column policy lives in `src/config.py`: `LEAKAGE_COLUMNS`, `NON_FEATURE_COLUMNS`, `TRAFFIC_VOLUME_COLUMN`, `FORECAST_HORIZON`.
 
@@ -286,9 +291,9 @@ These are the reasons the metrics are trustworthy. Tests lock them.
 
 - Multi-class serving (evaluation is per-attack; the decision is binary).
 - Streaming / packet-level capture. Input is already-aggregated flows.
-- Authn/z and rate limits on the API.
+- Rate limits, mTLS, and a required identity provider on the API. `API_KEY` is optional and off by default.
 - Automatic retrain on a schedule.
-- A production-sized serving model. The 200-tree forest and 512Mi limit are known tension; measure latency and RSS on CICIDS before you call it near-real-time.
+- A production-sized serving model. Measure latency and RSS on CICIDS before you call it near-real-time (API limit is 1Gi).
 - Apply-ready Terraform (VPC, subnets, and a remote backend are still yours to fill).
 
 ## 11. Local vs cluster

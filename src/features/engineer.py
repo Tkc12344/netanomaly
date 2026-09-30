@@ -1,14 +1,14 @@
 """
-Feature Engineering (thesis Sec 3.4).
+Feature engineering.
 
 - Current-state features: already present as raw flow columns (packet
-  counts, flow duration, byte rates) — Sec 3.4.2.
+  counts, flow duration, byte rates).
 - Statistical features: rolling mean/std over the traffic-volume
-  series, computed within a source file so days are not mixed — Sec 3.4.3.
+  series, computed within a source file so days are not mixed.
 - Temporal features: a time-shifted target variable for forecasting,
-  shifted within the same group — Sec 3.4.4.
+  shifted within the same group.
 - Contextual features: pass through as-is (ports/protocols already in
-  the numeric feature set after preprocessing) — Sec 3.4.5.
+  the numeric feature set after preprocessing).
 """
 from __future__ import annotations
 
@@ -70,10 +70,10 @@ def build_forecasting_frame(
     df: pd.DataFrame, horizon: int = config.FORECAST_HORIZON
 ) -> tuple[pd.DataFrame, pd.Series]:
     """
-    Builds (X, y) for the forecasting task using a time-shifted target
-    (Sec 3.4.4 / 3.6.2): y[t] = traffic_volume[t + horizon] *within the
-    same source file*. Features at time t are current-state (including
-    current volume); future rows are not used as inputs.
+    Builds (X, y) for the forecasting task using a time-shifted target:
+    y[t] = traffic_volume[t + horizon] *within the same source file*.
+    Features at time t are current-state (including current volume);
+    future rows are not used as inputs.
     """
     df = df.copy()
     group_col = infer_group_column(df)

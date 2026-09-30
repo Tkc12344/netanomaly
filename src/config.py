@@ -1,12 +1,6 @@
 """
-Central configuration for the network anomaly detection & traffic
-forecasting system.
-
-Mirrors the design decisions in Chapter 3 (Methodology) and Chapter 4
-(Implementation) of the source thesis:
-  - Tiwari, A. (2026). "Network Anomaly Detection and Traffic
-    Forecasting Using Machine Learning and Sequence Models."
-    CSUN MSc Thesis.
+Central configuration for the network anomaly detection and traffic
+forecasting project.
 """
 from __future__ import annotations
 
@@ -32,7 +26,7 @@ CLASSIFIER_CARD_PATH = MODELS_DIR / "classifier_card.json"
 FORECASTER_CARD_PATH = MODELS_DIR / "forecaster_card.json"
 
 # --------------------------------------------------------------------------
-# Preprocessing (Sec 3.3 / 4.4)
+# Preprocessing
 # --------------------------------------------------------------------------
 LABEL_COLUMN = "Label"
 BENIGN_LABEL = "BENIGN"
@@ -40,7 +34,7 @@ ATTACK_TYPE_COLUMN = "Attack_Type"
 TIME_COLUMN = "Timestamp"
 SOURCE_FILE_COLUMN = "Source_File"
 
-# Identifiers that carry no generalizable signal (Sec 3.3.5 / 4.4).
+# Identifiers that carry no generalizable signal.
 # Timestamp is *not* leakage for forecasting — it is kept through sort /
 # grouped rolling, then stripped before fit via NON_FEATURE_COLUMNS.
 LEAKAGE_COLUMNS = [
@@ -61,15 +55,36 @@ NON_FEATURE_COLUMNS = [
     SOURCE_FILE_COLUMN,
 ]
 
-# Column used to build the time-shifted forecasting target (Sec 3.4.4).
+# Column used to build the time-shifted forecasting target.
 TRAFFIC_VOLUME_COLUMN = "Total_Length_of_Fwd_Packets"
-FORECAST_HORIZON = 1  # steps ahead (rows), matches the thesis's next-step framing
+FORECAST_HORIZON = 1  # steps ahead (rows)
 
 RANDOM_STATE = 42
 TEST_SIZE = 0.2
+N_ESTIMATORS = int(os.environ.get("N_ESTIMATORS", "200"))
+TRAIN_N_JOBS = int(os.environ.get("TRAIN_N_JOBS", "-1"))
+SERVE_N_JOBS = 1
 
 # --------------------------------------------------------------------------
-# Transformer (Sec 3.5.3 / 4.9) — lightweight, sequence length small on purpose
+# Hugging Face CICIDS-2017 (datasets-server /rows)
+# --------------------------------------------------------------------------
+HF_ROWS_URL = os.environ.get(
+    "HF_ROWS_URL", "https://datasets-server.huggingface.co/rows"
+)
+HF_DATASET = os.environ.get("HF_DATASET", "San0160/CICIDS-2017")
+HF_CONFIG = os.environ.get("HF_CONFIG", "default")
+HF_SPLIT = os.environ.get("HF_SPLIT", "train")
+HF_PAGE_LENGTH = 100  # datasets-server maximum
+HF_DEFAULT_MAX_ROWS = int(os.environ.get("HF_MAX_ROWS", "20000"))
+HF_OUTPUT_FILENAME = "cicids2017_huggingface.csv"
+# Proxy origin: this dump has no capture Timestamp. row_idx seconds from here
+# is concatenation order, not packet-capture time.
+HF_TIMESTAMP_ORIGIN = "2017-07-03 00:00:00"
+HF_REQUEST_RETRIES = 5
+HF_REQUEST_TIMEOUT_S = 60.0
+
+# --------------------------------------------------------------------------
+# Transformer — lightweight; sequence length is small on purpose
 # --------------------------------------------------------------------------
 SEQ_LEN = 10
 TRANSFORMER_EPOCHS = 5

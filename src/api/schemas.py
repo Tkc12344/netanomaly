@@ -51,3 +51,20 @@ class ReadyResponse(BaseModel):
     status: str
     classifier_loaded: bool
     forecaster_loaded: bool
+
+
+class SchemaResponse(BaseModel):
+    classifier_ready: bool
+    forecaster_ready: bool
+    classifier_features: list[str] | None = None
+    forecaster_features: list[str] | None = None
+    model_version: str | None = None
+
+
+class ServiceInfoResponse(BaseModel):
+    service: str
+    version: str
+    docs: str
+    health: str
+    ready: str
+    schema: str

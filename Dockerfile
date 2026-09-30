@@ -6,8 +6,9 @@ RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 COPY requirements.txt .
-# API/pipeline only needs the core deps at runtime — skip shap/torch/dev tools
-RUN grep -vE '^(shap|torch|pytest|httpx|matplotlib|ruff)' requirements.txt > requirements.runtime.txt \
+# Runtime image skips optional/dev packages. Keep httpx — the train Job
+# in this same image fetches CICIDS via Hugging Face /rows.
+RUN grep -vE '^(shap|torch|pytest|matplotlib|ruff)' requirements.txt > requirements.runtime.txt \
     && pip install --no-cache-dir -r requirements.runtime.txt
 
 # --- runtime stage ---
@@ -32,4 +33,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/ready')" || exit 1
 
-CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--timeout-keep-alive", "5"]

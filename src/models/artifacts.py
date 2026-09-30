@@ -48,6 +48,18 @@ def read_model_card(path: Path) -> dict[str, Any] | None:
     return json.loads(path.read_text())
 
 
+def pin_estimator_threads(model: Any, n_jobs: int = config.SERVE_N_JOBS) -> Any:
+    """Avoid oversubscribing CPUs on every /classify call (sklearn default is -1)."""
+    if hasattr(model, "n_jobs"):
+        model.n_jobs = n_jobs
+    steps = getattr(model, "steps", None)
+    if steps:
+        for _, step in steps:
+            if hasattr(step, "n_jobs"):
+                step.n_jobs = n_jobs
+    return model
+
+
 def default_classifier_card(
     model_name: str, feature_columns: list[str], metrics: dict[str, Any] | None = None
 ) -> dict[str, Any]:

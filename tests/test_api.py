@@ -81,6 +81,47 @@ def test_explain_same_vector_as_classify(api_client, trained_artifacts):
     assert names.issubset(set(trained_artifacts["classifier_cols"]))
 
 
+def test_root_and_schema(api_client, trained_artifacts):
+    root = api_client.get("/")
+    assert root.status_code == 200
+    assert root.json()["service"] == "netanomaly"
+    schema = api_client.get("/schema")
+    assert schema.status_code == 200
+    body = schema.json()
+    assert body["classifier_ready"] is True
+    assert body["classifier_features"] == trained_artifacts["classifier_cols"]
+    assert body["forecaster_features"] == trained_artifacts["forecaster_cols"]
+    assert body["model_version"]
+
+
+def test_api_key_protects_post_not_health(api_client, trained_artifacts, monkeypatch):
+    monkeypatch.setenv("API_KEY", "test-secret")
+    features = _complete(trained_artifacts["classifier_cols"])
+    denied = api_client.post("/classify", json={"features": features})
+    assert denied.status_code == 401
+    assert api_client.get("/health").status_code == 200
+    ok = api_client.post(
+        "/classify",
+        json={"features": features},
+        headers={"X-API-Key": "test-secret"},
+    )
+    assert ok.status_code == 200
+
+
+def test_corrupt_classifier_keeps_ready_503(model_dir):
+    (model_dir / "classifier.joblib").write_bytes(b"not-a-joblib")
+    (model_dir / "feature_columns.json").write_text('["Flow_Duration"]')
+    from fastapi.testclient import TestClient
+
+    from src.api.main import app, reset_models
+
+    reset_models()
+    with TestClient(app) as client:
+        assert client.get("/health").status_code == 200
+        assert client.get("/ready").status_code == 503
+    reset_models()
+
+
 def test_model_card_is_written(trained_artifacts, model_dir):
     from src import config
     from src.models.artifacts import read_model_card

@@ -4,7 +4,7 @@ whole pipeline can be exercised (and CI can run) before the real
 dataset is downloaded and dropped into data/raw/.
 
 Not a substitute for the real dataset — swap it out once you have
-CICIDS2017 CSVs in place (see README "Getting the dataset").
+CICIDS2017 CSVs in place (see README "CICIDS2017").
 
 Attack rows share a backbone distribution with benign traffic and only
 add attack-shaped offsets, so a default tree cannot separate classes

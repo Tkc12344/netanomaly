@@ -1,13 +1,10 @@
 """
-Lightweight Transformer Model (thesis Sec 3.5.3 / 4.9).
+Lightweight Transformer.
 
-The thesis's own finding: on structured tabular flow data, a small
-self-attention sequence model underperforms the classical Random
-Forest and needs far more tuning/data to close the gap (Sec 4.9,
-6.6). This module exists to demonstrate and reproduce that result,
-not because it's the recommended production model — the API and
-deployment layers use the Random Forest classifier/forecaster
-(Sec 3.7.2).
+On this structured tabular flow data, a small self-attention sequence
+model underperforms Random Forest and needs far more tuning and data
+to close the gap. This module exists as an optional experiment, not
+as the served model — the API uses the sklearn classifier/forecaster.
 
 Requires torch: `pip install torch` (kept optional/importable-only so
 the rest of the system works without it).
@@ -25,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 def make_sequences(X: np.ndarray, y: np.ndarray, seq_len: int = config.SEQ_LEN):
-    """Sliding-window sequence construction (Sec 4.9)."""
+    """Sliding-window sequence construction."""
     xs, ys = [], []
     for i in range(len(X) - seq_len):
         xs.append(X[i : i + seq_len])
@@ -98,7 +95,7 @@ def train_transformer(df: pd.DataFrame, epochs: int = config.TRANSFORMER_EPOCHS)
         preds = model(torch.tensor(X_test)).numpy()
     mae = float(np.mean(np.abs(preds - y_test)))
     rmse = float(np.sqrt(np.mean((preds - y_test) ** 2)))
-    logger.info("Transformer -> MAE=%.2f  RMSE=%.2f (expect worse than Random Forest, per thesis)", mae, rmse)
+    logger.info("Transformer -> MAE=%.2f  RMSE=%.2f (expect worse than Random Forest)", mae, rmse)
     return model, {"mae": mae, "rmse": rmse}
 
 

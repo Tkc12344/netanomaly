@@ -1,147 +1,194 @@
 # Netanomaly
 
-Network anomaly detection and traffic forecasting, implemented from Akshay Tiwari's MSc thesis *Network Anomaly Detection and Traffic Forecasting Using Machine Learning and Sequence Models* (CSUN, 2026).
+Detect anomalies in CICIDS-2017 network flows and forecast the next traffic volume. Flows are preprocessed in time order, a binary classifier is trained against a dummy baseline, a one-step volume forecaster is trained against a persist baseline, and a FastAPI service serves the artifacts. The Docker image is **code only** — models are trained separately and mounted or pulled at runtime.
 
-The repo is a working system, not a notebook dump: CICIDS-shaped flows go through a time-aware preprocess, a binary classifier with a dummy baseline, a one-step volume forecaster with a persist baseline, a FastAPI service, and a Kubernetes path that **does not bake models into the image**.
+Design, split rules, and artifact flow: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full design: data flow, split rules, API contract, and how artifacts move from a training Job onto a PVC.
+## What it does
 
-## What you get
-
-| Layer | What it does |
+| Layer | Behaviour |
 |---|---|
-| Data | Merges every CSV in `data/raw/`. Synthetic CICIDS-shaped generator if you do not have the real set yet. |
-| Preprocess | Time sort, leakage-ID drop, binary label + original `Attack_Type`, natural class mix on the holdout. |
-| Classifier | Dummy (most-frequent) + scaled logistic regression + Random Forest + Gradient Boosting. Train-fold sample weights only. Per-attack recall on a binary decision. |
-| Forecaster | Random Forest regressor, grouped rolling stats, chronological split, persist (last-value) baseline. |
-| API | `/classify`, `/forecast`, `/explain`. Complete feature vectors only. `/ready` is 503 until a classifier is loaded. |
-| Deploy | Image is code-only. Models come from a training Job + PVC, or `MODEL_STORAGE_BASE_URL`. CI publishes to GHCR. |
+| Data | Concatenates every CSV in `data/raw/`. Fetches [`San0160/CICIDS-2017`](https://huggingface.co/datasets/San0160/CICIDS-2017) via Hugging Face `/rows`, or generates synthetic rows for CI. |
+| Preprocess | Time sort, leakage-ID drop, binary `Label` plus original `Attack_Type`. The holdout keeps the natural class mix. |
+| Classifier | Dummy (most-frequent), scaled logistic regression, Random Forest, Gradient Boosting. Sample weights on the **train** fold only. Per-attack recall on a binary decision. |
+| Forecaster | Random Forest regressor, rolling stats grouped by source file, chronological split, persist (last-value) baseline. |
+| API | `/classify`, `/forecast`, `/explain`. Missing features are 422. `/ready` is 503 until a classifier is loaded. |
+| Deploy | Training Job + PVC (or `MODEL_STORAGE_BASE_URL`). CI publishes to GHCR. |
 
-The optional Transformer (`src/models/transformer.py`) is kept to reproduce the thesis finding that it loses to trees on this tabular data. It is not the served model.
+The Transformer in `src/models/transformer.py` is an experiment. Trees outperform it on this tabular data; the API does not load it.
 
 ## Quickstart
+
+Python 3.12+.
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-make synthetic-data          # CICIDS-shaped CSVs in data/raw/
-make pipeline                # preprocess, train, write models/ + model cards
-make api                     # uvicorn on :8000
+make hf-data      # strided 20k sample from Hugging Face → data/raw/
+make pipeline     # preprocess, train, write models/ + model cards
+make api          # uvicorn on :8000
 ```
 
-After training, `models/feature_columns.json` is the request schema. A one-key body is rejected (422):
+Offline / CI without Hugging Face: `make synthetic-data` then `make pipeline`.
+
+After the API is up, `/schema` is the request contract. A complete dummy vector:
 
 ```bash
-python - <<'PY'
-import json
-from pathlib import Path
-cols = json.loads(Path("models/feature_columns.json").read_text())
-print(json.dumps({"features": {c: 1.0 for c in cols}}))
-PY
+FEATURES=$(curl -s localhost:8000/schema | python -c \
+  "import json,sys; s=json.load(sys.stdin); print(json.dumps({'features': {c: 1.0 for c in s['classifier_features']}}))")
 
 curl -s -X POST localhost:8000/classify \
   -H "Content-Type: application/json" \
-  -d @-   # paste the JSON from the snippet above
+  -d "$FEATURES"
 ```
 
-Same vector on `/explain` returns per-feature contributions (coefficients for a linear pipeline; SHAP for trees when `shap` is installed).
+Use the same body on `/explain`. Forecast needs `forecaster_features` from `/schema`, not the classifier list.
 
-Or: `make install`, `make test`.
+```bash
+make test         # unit + API tests (no network)
+make e2e          # generate → pipeline → classify/forecast/explain
+```
 
-## CICIDS2017
+## Data
 
-This repo cannot download CICIDS2017 (registration wall). To use the real set:
+Training CSVs come from Hugging Face [`San0160/CICIDS-2017`](https://huggingface.co/datasets/San0160/CICIDS-2017) through datasets-server `/rows` (max **100 rows per request**):
 
-1. Get the MachineLearningCSV flows from the [Canadian Institute for Cybersecurity](https://www.unb.ca/cic/datasets/ids-2017.html).
-2. Remove synthetic CSVs from `data/raw/`.
-3. Drop the real CSVs there.
-4. Run `python -m src.pipeline` again. `load.py` concatenates whatever it finds.
+```bash
+curl -X GET \
+  "https://datasets-server.huggingface.co/rows?dataset=San0160%2FCICIDS-2017&config=default&split=train&offset=0&length=100"
 
-Expect a `Label` column with `BENIGN` for normal traffic. Rename via `src/config.py` if your headers differ.
+make hf-data                                    # default: strided 20k sample
+python -m src.data.fetch_huggingface --sequential --max-rows 500
+HF_MAX_ROWS=0 python -m src.data.fetch_huggingface   # full split (~28k HTTP calls)
+```
+
+- The split is **2,830,743** rows. `offset=0` is Monday BENIGN only. The default fetch **strides** 100-row pages across the week so attacks are present.
+- `--sequential` paginates `0, 100, 200, …` like the curl above.
+- `--max-rows 0` walks the full split. `--max-rows N` caps the sample.
+- This dump has no capture `Timestamp`. The fetcher assigns a **proxy** from each `row_idx` (concatenation order, not packet time) so rolling features have a defined order.
+- `load.py` concatenates every `*.csv` in `data/raw/`. Remove leftover files before a clean CICIDS-only train.
+- `pytest` never hits Hugging Face.
+
+On a cluster Job, set `DATA_SOURCE=huggingface` (and optionally `HF_MAX_ROWS`) so an empty `data/raw` fetches instead of generating synthetic rows.
 
 ## API
 
+Base URL: `http://localhost:8000`. Interactive docs: `/docs`.
+
 | Method | Path | Behaviour |
 |---|---|---|
-| GET | `/health` | Liveness. Always 200. `ready` says whether a classifier is loaded. |
-| GET | `/ready` | 503 until `classifier.joblib` + feature columns are loaded. Kubernetes readiness uses this. |
-| POST | `/classify` | Binary anomaly + probability + `model_version`. 422 if any trained column is missing. |
+| GET | `/` | Service name, version, path hints. |
+| GET | `/health` | Liveness. Always 200. `ready` is whether a classifier is loaded. |
+| GET | `/ready` | 503 until `classifier.joblib` + feature columns load. Kubernetes readiness probe. |
+| GET | `/schema` | Required feature names for `/classify` and `/forecast`. |
+| POST | `/classify` | Binary anomaly + probability + `model_version`. 422 if any trained column is missing or non-finite. |
 | POST | `/forecast` | Next-step `Total_Length_of_Fwd_Packets`. Same completeness rule. |
-| POST | `/explain` | Same body as `/classify`. |
+| POST | `/explain` | Same body as `/classify`. Coefficients for a linear pipeline; SHAP for trees when `shap` is installed. |
 
-## Project layout
+Request body:
+
+```json
+{ "features": { "Flow_Duration": 1.0, "…every column from /schema…": 0.0 } }
+```
+
+Optional `API_KEY`: when set, POST routes need `Authorization: Bearer <key>` or `X-API-Key: <key>`. `/health`, `/ready`, and `/schema` stay public so probes still work.
+
+## Configuration
+
+Copy `.env.example` to `.env` before `docker compose` (Compose requires the file). Local `make` commands use defaults if unset.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `DATA_RAW_DIR` | `data/raw` | Input CSVs |
+| `DATA_PROCESSED_DIR` | `data/processed` | Optional preprocess dump |
+| `MODELS_DIR` | `models` | Artifacts (`classifier.joblib`, cards, column lists) |
+| `DATA_SOURCE` | `synthetic` | `huggingface` fetches `/rows` when `data/raw` is empty |
+| `HF_MAX_ROWS` | `20000` | Hugging Face row cap (`0` = full split) |
+| `N_ESTIMATORS` | `200` | Trees for RF classifier / forecaster |
+| `API_KEY` | empty | Optional POST auth |
+| `MODEL_STORAGE_BASE_URL` | empty | HTTP prefix for artifact sync |
+| `MODEL_STORAGE_TOKEN` | empty | Bearer token for that sync |
+| `TRAIN_ROWS` / `TRAIN_FILES` | `8000` / `2` | Synthetic size inside the k8s Job |
+
+Column policy (leakage IDs, protected columns, forecast target) lives in `src/config.py`.
+
+## Make targets
+
+| Target | What it runs |
+|---|---|
+| `make hf-data` | Hugging Face `/rows` → `data/raw/` |
+| `make synthetic-data` | CICIDS-shaped synthetic CSVs |
+| `make pipeline` | Load, preprocess, train, write `models/` |
+| `make api` | `uvicorn` on port 8000 |
+| `make test` / `make e2e` / `make lint` | pytest / e2e / ruff |
+| `make docker-build` | Image `netanomaly-api:local` |
+| `make docker-train` | Compose trainer → `./models` |
+| `make docker-up` | Compose API, `./models` mounted read-only |
+| `make k8s-train` / `make k8s-apply` | Job then Deployment (`IMAGE=…`) |
+
+## Layout
 
 ```
-src/data/          load, preprocess, synthetic generator
+src/data/          load, HF /rows fetch, preprocess, synthetic generator
 src/features/      grouped rolling stats, forecast target shift
-src/models/        classifier, forecaster, transformer, SHAP, sync, train job
+src/models/        classifier, forecaster, transformer, explain, sync, train job
 src/api/           FastAPI service
-tests/             preprocess, splits, API 422/503/200, artifact sync
+tests/             preprocess, splits, API 422/503/200, HF fetcher (mocked), e2e
 k8s/               PVC, train Job, Deployment, Service, HPA
+terraform/         EKS starting point (not apply-ready)
 docs/ARCHITECTURE.md
 ```
 
 ## Docker
 
 ```bash
+cp .env.example .env     # Compose reads .env; leave MODEL_STORAGE_* commented
 make docker-build
-make docker-train            # python -m src.models.train_job → ./models
-docker compose up api        # mounts ./models read-only
+make docker-train        # python -m src.models.train_job → ./models
+docker compose up api    # mounts ./models read-only
 ```
 
 The image does not `COPY models`. An empty `models/` directory means `/ready` fails, which is intentional.
 
 ## Kubernetes
 
-Images come from GHCR. Replace `OWNER` or pass `IMAGE=...`.
+Images come from GHCR. CI tag: `ghcr.io/<owner>/<repo>/netanomaly-api:<sha>`. Manifests still say `ghcr.io/OWNER/netanomaly-api:latest` — pass `IMAGE` (or edit the placeholder) before apply.
 
 ```bash
-make k8s-train IMAGE=ghcr.io/<org>/netanomaly/netanomaly-api:<tag>
-make k8s-apply IMAGE=ghcr.io/<org>/netanomaly/netanomaly-api:<tag>
+make k8s-train IMAGE=ghcr.io/<owner>/<repo>/netanomaly-api:<tag>
+make k8s-apply IMAGE=ghcr.io/<owner>/<repo>/netanomaly-api:<tag>
 ```
 
 1. `netanomaly-train` writes joblib + cards onto the `netanomaly-models` PVC.
-2. The API init container runs `python -m src.models.sync --pull --wait` so the pod does not start without a classifier.
+2. The API init container runs `python -m src.models.sync --pull --wait` so the pod does not become ready without a classifier.
 3. `/ready` is the readiness probe; `/health` is liveness.
+4. Pods drop all capabilities, run as non-root, and the API root filesystem is read-only (1Gi memory limit).
 
-On kind / minikube (one node) ReadWriteOnce is shared by both replicas. On multi-node, set `MODEL_STORAGE_BASE_URL` or use ReadWriteMany. Secrets are optional (`k8s/secret.example.yaml` → `secret.yaml`, never commit it).
+On kind / minikube (one node) ReadWriteOnce is shared by both replicas. On multi-node, set `MODEL_STORAGE_BASE_URL` or use ReadWriteMany. Optional secrets: copy `k8s/secret.example.yaml` → `k8s/secret.yaml` and do not commit it.
 
 ## CI/CD and Terraform
 
-`.github/workflows/ci-cd.yml`: lint → pytest (trains a tiny model in a temp dir) → push `ghcr.io/<owner>/<repo>/netanomaly-api` on `main` → `kubectl apply` when `KUBE_CONFIG` is a base64 kubeconfig. Without that secret, deploy skips apply and still passes. Retrain with `make k8s-train`, not on every push.
+`.github/workflows/ci-cd.yml` on `main`: ruff → pytest (tiny model in a temp dir, no Hugging Face) → push `ghcr.io/<owner>/<repo>/netanomaly-api` → `kubectl apply` when `KUBE_CONFIG` is a base64 kubeconfig. Without that secret, deploy skips apply and still passes. Retrain with `make k8s-train`, not on every push.
 
 `terraform/` is an EKS starting point, not apply-ready. Fill VPC/subnets and a remote backend first. The registry is GHCR, not ECR.
 
-## Thesis map
-
-| Thesis | This repo |
-|---|---|
-| 3.2 Data collection | `src/data/load.py` |
-| 3.3 / 4.4 Preprocess | Time parse + sort, inf/NaN → 0, duplicate drop, `Attack_Type` kept, leakage IDs dropped. Holdout is **not** undersampled. |
-| 3.4 Features | Grouped rolling mean/std; forecast target shifted inside each source file. |
-| 3.5.1 / 4.5 Classification | Dummy + scaled LR + RF + GB; stratified split; train-fold weights. |
-| 3.5.2 / 4.8 Forecasting | RF regressor; chronological split; persist MAE/RMSE. |
-| 3.5.3 / 4.9 Transformer | Optional, not served. |
-| 3.5.4 / 4.7 Explain | `/explain` + `src/models/explain.py`. |
-| 3.6 Evaluation | Precision / recall / F1 / AUC-PR + prevalence + per-attack recall; MAE / RMSE vs persist. |
-| 3.7 / 4.10 Deploy | Latency helper, FastAPI, Job + PVC, GHCR. |
-
 ## Limitations
 
-- The forecaster follows trend and misses sudden spikes (thesis Sec 5.5.3 / 6.4).
-- The small Transformer loses to trees on this tabular data (Sec 4.9 / 6.6).
-- Zero-filling inf/NaN is a documented bias (Sec 3.3.3).
-- A 200-tree forest on full CICIDS may not fit the 512Mi API limit; measure before you serve it.
-- Synthetic data is for exercising the pipeline. Report CICIDS numbers from the real CSVs.
+- The forecaster follows trend and misses sudden spikes.
+- The small Transformer loses to trees on this tabular data.
+- Zero-filling inf/NaN is a known bias in the cleaned features.
+- A 200-tree forest on full CICIDS can be large. Saved forests are pinned to one thread for serving; the API limit is 1Gi. Measure RSS before calling it near-real-time.
+- Synthetic data exercises the pipeline and CI. Report CICIDS numbers from `make hf-data`, not from the generator.
+- `joblib` artifacts are pickle-based. Treat `models/` as trusted output of this repo’s trainer, not as an untrusted upload.
+- Optional `API_KEY` is not an identity provider. There is no rate limit or mTLS.
 
 ## Suggested path
 
-1. Local pipeline (`make synthetic-data && make pipeline && make test`)
-2. API (`make api`)
-3. Docker (`make docker-build && make docker-train && docker compose up api`)
-4. Kubernetes on kind, then a real cluster
-5. Green GitHub Actions + `KUBE_CONFIG` for deploy
-6. External secrets instead of a plain `Secret`
-7. Terraform for EKS if you want AWS; keep GHCR as the registry
+1. Local: `make hf-data && make pipeline && make test && make api`
+2. Docker: `make docker-build && make docker-train && docker compose up api`
+3. Kubernetes on kind, then a real cluster
+4. Green GitHub Actions; add `KUBE_CONFIG` when you want deploy
+5. External secrets instead of a plain `Secret`
+6. Terraform for EKS if you want AWS; keep GHCR as the registry

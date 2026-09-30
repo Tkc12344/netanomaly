@@ -4,8 +4,7 @@ End-to-end pipeline runner.
     python -m src.pipeline
 
 Runs: load -> preprocess -> train classifier -> train forecaster ->
-save models -> measure latency, and prints a summary that mirrors
-Chapter 5 (Results) of the thesis.
+save models -> measure latency, then prints a metrics summary.
 """
 from __future__ import annotations
 

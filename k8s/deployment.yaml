@@ -18,10 +18,17 @@ spec:
         runAsUser: 1000
         runAsNonRoot: true
         fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       initContainers:
         - name: fetch-models
           image: ghcr.io/OWNER/netanomaly-api:latest
           command: ["python", "-m", "src.models.sync", "--pull", "--wait", "--timeout", "900"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           envFrom:
             - configMapRef:
                 name: netanomaly-config
@@ -31,11 +38,18 @@ spec:
           volumeMounts:
             - name: models
               mountPath: /app/models
+            - name: tmp
+              mountPath: /tmp
       containers:
         - name: api
           image: ghcr.io/OWNER/netanomaly-api:latest
           ports:
             - containerPort: 8000
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           envFrom:
             - configMapRef:
                 name: netanomaly-config
@@ -45,10 +59,10 @@ spec:
           resources:
             requests:
               cpu: "250m"
-              memory: "256Mi"
+              memory: "512Mi"
             limits:
               cpu: "1"
-              memory: "512Mi"
+              memory: "1Gi"
           readinessProbe:
             httpGet:
               path: /ready
@@ -65,7 +79,11 @@ spec:
             - name: models
               mountPath: /app/models
               readOnly: true
+            - name: tmp
+              mountPath: /tmp
       volumes:
         - name: models
           persistentVolumeClaim:
             claimName: netanomaly-models
+        - name: tmp
+          emptyDir: {}

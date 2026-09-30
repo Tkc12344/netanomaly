@@ -1,7 +1,10 @@
-.PHONY: install synthetic-data pipeline api test docker-build docker-up docker-train lint k8s-apply k8s-train
+.PHONY: install hf-data synthetic-data pipeline api test e2e docker-build docker-up docker-train lint k8s-apply k8s-train
 
 install:
 	pip install -r requirements.txt
+
+hf-data:
+	python -m src.data.fetch_huggingface
 
 synthetic-data:
 	python -m src.data.generate_synthetic --rows 20000 --files 3
@@ -14,6 +17,9 @@ api:
 
 test:
 	pytest tests/ -q
+
+e2e:
+	pytest tests/test_e2e.py -v
 
 lint:
 	ruff check src tests

@@ -1,16 +1,16 @@
 """
-Data Preprocessing (thesis Sec 3.3 / 4.4).
+Data preprocessing.
 
 Steps, in order:
-  1. Column standardization      (3.3.2 / 4.4)
-  2. Time parse + chronological sort (needed for Sec 3.4 / 3.6.1 forecasting)
-  3. Missing / infinite handling (3.3.3 / 4.4)  -> inf -> NaN -> 0
-  4. Duplicate-row drop          (CICIDS2017 hygiene)
-  5. Label transformation        (3.3.4 / 4.4)  -> BENIGN=0, else 1
+  1. Column standardization
+  2. Time parse + chronological sort (needed for forecasting)
+  3. Missing / infinite handling  -> inf -> NaN -> 0
+  4. Duplicate-row drop           (CICIDS2017 hygiene)
+  5. Label transformation         -> BENIGN=0, else 1
      Original attack names are kept in Attack_Type for per-attack recall.
-  6. Feature selection           (3.3.5 / 4.4)  -> drop leakage IDs, keep time
-  7. Numeric conversion          (3.3.6 / 4.4)  -> drop remaining non-numeric
-  8. Class balancing             optional, train-fold only — default off
+  6. Feature selection            -> drop leakage IDs, keep time
+  7. Numeric conversion           -> drop remaining non-numeric
+  8. Class balancing              optional, train-fold only — default off
 """
 from __future__ import annotations
 

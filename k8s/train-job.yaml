@@ -20,10 +20,16 @@ spec:
         runAsUser: 1000
         runAsNonRoot: true
         fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: trainer
           image: ghcr.io/OWNER/netanomaly-api:latest
           command: ["python", "-m", "src.models.train_job"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           envFrom:
             - configMapRef:
                 name: netanomaly-config

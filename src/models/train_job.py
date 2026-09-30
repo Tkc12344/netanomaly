@@ -1,9 +1,10 @@
 """
 Cluster training entrypoint.
 
-Generates CICIDS-shaped synthetic data if data/raw is empty, runs the
-pipeline onto MODELS_DIR (the models PVC), then optionally pushes
-artifacts to MODEL_STORAGE_BASE_URL.
+If data/raw is empty, either fetches Hugging Face CICIDS-2017
+(`DATA_SOURCE=huggingface`) or generates CICIDS-shaped synthetic data.
+Then runs the pipeline onto MODELS_DIR (the models PVC) and optionally
+pushes artifacts to MODEL_STORAGE_BASE_URL.
 """
 from __future__ import annotations
 
@@ -22,6 +23,26 @@ def _ensure_raw_data() -> None:
     config.DATA_RAW_DIR.mkdir(parents=True, exist_ok=True)
     if any(config.DATA_RAW_DIR.glob("*.csv")):
         logger.info("Using existing CSVs in %s", config.DATA_RAW_DIR)
+        return
+    source = os.environ.get("DATA_SOURCE", "synthetic").strip().lower()
+    if source == "huggingface":
+        max_rows = os.environ.get("HF_MAX_ROWS", str(config.HF_DEFAULT_MAX_ROWS))
+        logger.info(
+            "No raw CSVs found; fetching Hugging Face %s (max_rows=%s)",
+            config.HF_DATASET,
+            max_rows,
+        )
+        subprocess.check_call(
+            [
+                sys.executable,
+                "-m",
+                "src.data.fetch_huggingface",
+                "--max-rows",
+                max_rows,
+                "--out-dir",
+                str(config.DATA_RAW_DIR),
+            ]
+        )
         return
     rows = os.environ.get("TRAIN_ROWS", "8000")
     files = os.environ.get("TRAIN_FILES", "2")

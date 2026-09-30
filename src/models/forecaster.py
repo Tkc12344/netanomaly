@@ -1,11 +1,11 @@
 """
-Traffic Forecasting Implementation (thesis Sec 3.5.2 / 3.6.1 / 4.8).
+Traffic forecasting.
 
 Uses a Random Forest Regressor on a time-shifted target so the model
 only ever learns from past observations. Split is chronological (not
-random/stratified) to avoid leaking future data into training — the
-same distinction the thesis draws between the classification split
-(stratified) and the forecasting split (time-based), Sec 3.6.1.
+random/stratified) to avoid leaking future data into training —
+classification uses a stratified split; forecasting uses a time-based
+split.
 
 A persist (last-value) baseline is scored on the same holdout: predict
 the current traffic volume for the next step.
@@ -65,16 +65,16 @@ def persist_forecast(X_test: pd.DataFrame) -> np.ndarray:
     return X_test[config.TRAFFIC_VOLUME_COLUMN].to_numpy()
 
 
-def train_forecaster(df: pd.DataFrame, n_estimators: int = 200):
+def train_forecaster(df: pd.DataFrame, n_estimators: int | None = None):
     X, y = build_forecasting_frame(df)
     X_train, X_test, y_train, y_test = time_based_split(X, y)
 
     model = RandomForestRegressor(
-        n_estimators=n_estimators,
-        max_depth=20,  # caps tree size — unbounded depth on small/noisy data
-        min_samples_leaf=5,  # produces bloated multi-hundred-MB models
+        n_estimators=n_estimators or config.N_ESTIMATORS,
+        max_depth=20,
+        min_samples_leaf=5,
         random_state=config.RANDOM_STATE,
-        n_jobs=-1,
+        n_jobs=config.TRAIN_N_JOBS,
     )
     model.fit(X_train, y_train)
 
@@ -108,10 +108,11 @@ def save_forecaster(
     *,
     metrics: dict | None = None,
 ) -> None:
-    from src.models.artifacts import default_forecaster_card
+    from src.models.artifacts import default_forecaster_card, pin_estimator_threads
 
     path = path or config.FORECASTER_PATH
     config.MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    pin_estimator_threads(model)
     joblib.dump(model, path)
     with open(config.FORECASTER_COLUMNS_PATH, "w") as f:
         json.dump(feature_columns, f)

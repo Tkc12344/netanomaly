@@ -1,11 +1,8 @@
 """
-Deployment Testing — Latency Measurement (thesis Sec 3.7.3 / 4.10).
+Inference latency measurement.
 
-Measures per-sample inference latency for the chosen model. The
-thesis's own Random Forest measured ~456ms/prediction and judged that
-"acceptable for near real-time network monitoring" for NOC / edge
-deployment (Sec 3.7.4). Use this to check whether your trained model
-holds up to the same bar on your hardware.
+Times per-sample prediction for the chosen model so you can check
+whether it is fast enough for your hardware and serving budget.
 """
 from __future__ import annotations
 

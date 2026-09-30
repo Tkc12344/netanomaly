@@ -1,5 +1,5 @@
 """
-Classification Model Implementation (thesis Sec 3.5.1 / 4.5 / 4.6).
+Classification models.
 
 Trains a most-frequent dummy baseline, Logistic Regression (scaled),
 Random Forest, and Gradient Boosting on the anomaly-detection task.
@@ -50,7 +50,9 @@ MODEL_FACTORIES = {
         ]
     ),
     "random_forest": lambda: RandomForestClassifier(
-        n_estimators=200, random_state=config.RANDOM_STATE, n_jobs=-1
+        n_estimators=config.N_ESTIMATORS,
+        random_state=config.RANDOM_STATE,
+        n_jobs=config.TRAIN_N_JOBS,
     ),
     "gradient_boosting": lambda: GradientBoostingClassifier(
         random_state=config.RANDOM_STATE
@@ -235,10 +237,11 @@ def save_model(
     model_name: str | None = None,
     metrics: dict | None = None,
 ) -> None:
-    from src.models.artifacts import default_classifier_card
+    from src.models.artifacts import default_classifier_card, pin_estimator_threads
 
     path = path or config.CLASSIFIER_PATH
     config.MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    pin_estimator_threads(model)
     joblib.dump(model, path)
     with open(config.FEATURE_COLUMNS_PATH, "w") as f:
         json.dump(feature_columns, f)

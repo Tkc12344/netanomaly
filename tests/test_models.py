@@ -55,6 +55,16 @@ def test_dummy_baseline_and_scaled_logistic_regression():
         assert name not in cols
 
 
+def test_saved_forest_uses_single_thread_for_serving():
+    from sklearn.ensemble import RandomForestClassifier
+
+    from src.models.artifacts import pin_estimator_threads
+
+    model = RandomForestClassifier(n_estimators=8, n_jobs=-1, random_state=0)
+    pin_estimator_threads(model)
+    assert model.n_jobs == 1
+
+
 def test_forecaster_reports_persist_baseline():
     clean = _tiny_clean(n_rows=250)
     _, result, cols, (y_test, y_pred) = train_forecaster(clean, n_estimators=15)

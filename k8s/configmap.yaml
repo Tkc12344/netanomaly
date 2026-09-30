@@ -8,6 +8,7 @@ data:
   DATA_PROCESSED_DIR: "/app/data/processed"
   TRAIN_ROWS: "8000"
   TRAIN_FILES: "2"
+  N_ESTIMATORS: "200"
   # Optional HTTP(S) prefix that serves the artifact filenames
   # (classifier.joblib, feature_columns.json, ...). Leave empty to
   # rely on the training Job writing the models PVC.

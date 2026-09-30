@@ -1,10 +1,9 @@
 """
-Model Explainability (thesis Sec 3.5.4 / 4.7).
+Model explainability.
 
 Uses SHAP to attribute each prediction to feature contributions, and
-reports global feature importance — the packet-statistics / flow-
-duration / port-activity features the thesis calls out as the biggest
-drivers of the anomaly-detection decision (Sec 4.7).
+reports global feature importance (packet statistics, flow duration,
+port activity tend to dominate the anomaly decision).
 
 Requires shap: `pip install shap`.
 """

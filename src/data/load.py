@@ -1,9 +1,9 @@
 """
-Data Loading and Integration (thesis Sec 3.2 / 4.3).
+Data loading.
 
 Detects every CSV under data/raw/, reads each into a DataFrame, and
-concatenates them into a single unified table — code-driven so the
-merge is reproducible and requires no manual file wrangling.
+concatenates them into a single unified table so the merge is
+reproducible and needs no manual file wrangling.
 """
 from __future__ import annotations
 
@@ -24,8 +24,9 @@ def load_raw_dataset(raw_dir: Path | None = None) -> pd.DataFrame:
 
     if not csv_paths:
         raise FileNotFoundError(
-            f"No CSV files found in {raw_dir}. Either download CICIDS2017 "
-            f"there (see README) or run: python -m src.data.generate_synthetic"
+            f"No CSV files found in {raw_dir}. Fetch CICIDS2017 with "
+            f"`python -m src.data.fetch_huggingface` (or `make hf-data`), "
+            f"or generate synthetic rows: python -m src.data.generate_synthetic"
         )
 
     logger.info("Found %d CSV file(s) in %s", len(csv_paths), raw_dir)
