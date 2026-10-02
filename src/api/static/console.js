@@ -45,6 +45,34 @@ function readGridIntoState() {
   });
 }
 
+function colId(col) {
+  return "f-" + encodeURIComponent(col).replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+function featureSig(schema) {
+  if (!schema) return "";
+  return JSON.stringify([
+    schema.classifier_features,
+    schema.forecaster_features,
+    schema.model_version,
+  ]);
+}
+
+function renderFacts(health) {
+  const ready = Boolean(health && health.ready);
+  const pill = $("status-pill");
+  pill.textContent = ready ? "ready" : "not ready";
+  pill.className = `pill ${ready ? "ready" : "down"}`;
+  $("fact-api").textContent = health ? health.status : "unreachable";
+  $("fact-clf").textContent = health && health.classifier_loaded ? "loaded" : "missing";
+  $("fact-fc").textContent = health && health.forecaster_loaded ? "loaded" : "missing";
+  $("fact-ver").textContent = (state.schema && state.schema.model_version) || "—";
+  $("version-label").textContent = state.schema?.model_version
+    ? `model ${state.schema.model_version}`
+    : "";
+  return ready;
+}
+
 function renderGrid() {
   const filter = $("filter").value.trim().toLowerCase();
   const cols = columnsForTab();
@@ -54,14 +82,15 @@ function renderGrid() {
   const grid = $("feature-grid");
   grid.innerHTML = "";
   visible.forEach((col) => {
+    const id = colId(col);
     const cell = document.createElement("div");
     cell.className = "cell";
     const label = document.createElement("label");
     label.textContent = col;
     label.title = col;
-    label.setAttribute("for", `f-${col}`);
+    label.setAttribute("for", id);
     const input = document.createElement("input");
-    input.id = `f-${col}`;
+    input.id = id;
     input.dataset.col = col;
     input.inputMode = "decimal";
     input.value = state.values[col] ?? "";
@@ -74,6 +103,46 @@ function renderGrid() {
   $("vector-meta").textContent = state.schema
     ? `${cols.length} required · showing ${visible.length}`
     : "Schema not loaded.";
+}
+
+async function refresh(opts = {}) {
+  const initial = Boolean(opts.initial);
+  let health = null;
+  try {
+    const h = await fetch("/health");
+    health = await h.json();
+  } catch {
+    renderFacts(null);
+    setBanner("Cannot reach the API.");
+    return;
+  }
+  try {
+    const s = await fetch("/schema");
+    if (s.ok) {
+      const next = await s.json();
+      const changed = featureSig(next) !== featureSig(state.schema);
+      state.schema = next;
+      const ready = renderFacts(health);
+      if (!ready) {
+        setBanner("Classifier is not loaded. Train with make pipeline, then reload.");
+      } else if (initial) {
+        setBanner("");
+      }
+      if (changed || initial) renderGrid();
+    } else {
+      const body = await s.json().catch(() => ({}));
+      state.schema = null;
+      renderFacts(health);
+      const detail = body.detail;
+      setBanner(
+        typeof detail === "string" ? detail : `Schema ${s.status}`
+      );
+      if (initial) renderGrid();
+    }
+  } catch {
+    renderFacts(health);
+    if (initial) setBanner("Schema request failed.");
+  }
 }
 
 function payloadFor(columns) {
@@ -92,50 +161,6 @@ function payloadFor(columns) {
     else features[col] = n;
   });
   return { features, missing, invalid };
-}
-
-function renderStatus(health, schemaErr) {
-  const ready = Boolean(health && health.ready);
-  const pill = $("status-pill");
-  pill.textContent = ready ? "ready" : "not ready";
-  pill.className = `pill ${ready ? "ready" : "down"}`;
-  $("fact-api").textContent = health ? health.status : "unreachable";
-  $("fact-clf").textContent = health && health.classifier_loaded ? "loaded" : "missing";
-  $("fact-fc").textContent = health && health.forecaster_loaded ? "loaded" : "missing";
-  $("fact-ver").textContent = (state.schema && state.schema.model_version) || "—";
-  $("version-label").textContent = state.schema?.model_version
-    ? `model ${state.schema.model_version}`
-    : "";
-  if (schemaErr) setBanner(schemaErr);
-  else if (!ready) {
-    setBanner("Classifier is not loaded. Train with make pipeline, then reload.");
-  } else setBanner("");
-}
-
-async function refresh() {
-  let health = null;
-  try {
-    const h = await fetch("/health");
-    health = await h.json();
-  } catch {
-    renderStatus(null, "Cannot reach the API.");
-    return;
-  }
-  try {
-    const s = await fetch("/schema");
-    if (s.ok) {
-      state.schema = await s.json();
-      renderStatus(health, "");
-      renderGrid();
-    } else {
-      state.schema = null;
-      const body = await s.json().catch(() => ({}));
-      renderStatus(health, body.detail || `Schema ${s.status}`);
-      renderGrid();
-    }
-  } catch {
-    renderStatus(health, "Schema request failed.");
-  }
 }
 
 function showResult(html) {
@@ -298,5 +323,5 @@ $("api-key").addEventListener("change", () => {
   sessionStorage.setItem("netanomaly.apiKey", $("api-key").value);
 });
 
-refresh();
+refresh({ initial: true });
 setInterval(refresh, 20000);

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class FlowFeatures(BaseModel):
@@ -62,10 +62,13 @@ class SchemaResponse(BaseModel):
 
 
 class ServiceInfoResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     service: str
     version: str
     docs: str
     health: str
     ready: str
-    schema: str
+    # "schema" shadows BaseModel.schema(); JSON key stays "schema".
+    schema_url: str = Field(alias="schema")
     ui: str

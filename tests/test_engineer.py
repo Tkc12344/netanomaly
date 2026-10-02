@@ -1,7 +1,12 @@
 import pandas as pd
+import pytest
 
 from src import config
-from src.features.engineer import add_statistical_features, build_forecasting_frame
+from src.features.engineer import (
+    add_statistical_features,
+    build_forecasting_frame,
+    shift_target,
+)
 
 
 def test_rolling_does_not_cross_source_files():
@@ -35,3 +40,9 @@ def test_forecast_target_does_not_shift_across_files():
     assert config.TIME_COLUMN not in X.columns
     assert config.LABEL_COLUMN not in X.columns
     assert config.SOURCE_FILE_COLUMN not in X.columns
+
+
+def test_shift_target_requires_traffic_volume_column():
+    df = pd.DataFrame({"Flow_Duration": [1.0, 2.0, 3.0]})
+    with pytest.raises(KeyError, match="Forecast target"):
+        shift_target(df)

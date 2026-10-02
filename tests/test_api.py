@@ -11,6 +11,9 @@ def test_ui_console_is_served(empty_api_client):
     js = empty_api_client.get("/ui-static/console.js")
     assert css.status_code == 200
     assert js.status_code == 200
+    assert "function colId(" in js.text
+    assert "f-${col}" not in js.text
+    assert "refresh({ initial: true })" in js.text
 
 
 def test_health_is_liveness_without_models(empty_api_client):
@@ -95,8 +98,11 @@ def test_explain_same_vector_as_classify(api_client, trained_artifacts):
 def test_root_and_schema(api_client, trained_artifacts):
     root = api_client.get("/")
     assert root.status_code == 200
-    assert root.json()["service"] == "netanomaly"
-    assert root.json()["ui"] == "/ui"
+    body = root.json()
+    assert body["service"] == "netanomaly"
+    assert body["ui"] == "/ui"
+    assert body["schema"] == "/schema"
+    assert "schema_url" not in body
     schema = api_client.get("/schema")
     assert schema.status_code == 200
     body = schema.json()
@@ -112,12 +118,24 @@ def test_api_key_protects_post_not_health(api_client, trained_artifacts, monkeyp
     denied = api_client.post("/classify", json={"features": features})
     assert denied.status_code == 401
     assert api_client.get("/health").status_code == 200
+    wrong_len = api_client.post(
+        "/classify",
+        json={"features": features},
+        headers={"X-API-Key": "nope"},
+    )
+    assert wrong_len.status_code == 401
     ok = api_client.post(
         "/classify",
         json={"features": features},
         headers={"X-API-Key": "test-secret"},
     )
     assert ok.status_code == 200
+    bearer = api_client.post(
+        "/classify",
+        json={"features": features},
+        headers={"Authorization": "Bearer test-secret"},
+    )
+    assert bearer.status_code == 200
 
 
 def test_corrupt_classifier_keeps_ready_503(model_dir):

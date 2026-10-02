@@ -60,6 +60,10 @@ def shift_target(
     group_col: str | None = None,
 ) -> pd.Series:
     col = config.TRAFFIC_VOLUME_COLUMN
+    if col not in df.columns:
+        raise KeyError(
+            f"Forecast target '{col}' is missing. Columns: {list(df.columns)[:12]}"
+        )
     group_col = group_col or infer_group_column(df)
     if group_col and group_col in df.columns:
         return df.groupby(group_col, sort=False)[col].shift(-horizon)

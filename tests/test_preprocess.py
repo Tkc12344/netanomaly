@@ -101,3 +101,19 @@ def test_run_preprocessing_sorts_time_and_keeps_natural_mix():
     assert config.ATTACK_TYPE_COLUMN not in features.columns
     assert config.SOURCE_FILE_COLUMN not in features.columns
     assert "Total_Length_of_Fwd_Packets" in features.columns
+
+
+def test_object_infinity_is_coerced_not_dropped():
+    raw = pd.DataFrame(
+        {
+            "Flow Duration": [1.0, 2.0],
+            "Flow Bytes/s": ["Infinity", "10.5"],
+            "Total Length of Fwd Packets": [1.0, 2.0],
+            "Timestamp": ["2026-01-01 00:00:01", "2026-01-01 00:00:02"],
+            "Label": ["BENIGN", "BENIGN"],
+        }
+    )
+    out = run_preprocessing(raw)
+    assert "Flow_Bytes/s" in out.columns
+    assert out["Flow_Bytes/s"].iloc[0] == 0
+    assert out["Flow_Bytes/s"].iloc[1] == 10.5

@@ -18,6 +18,7 @@ Endpoints:
 """
 from __future__ import annotations
 
+import hmac
 import json
 import logging
 import math
@@ -118,12 +119,17 @@ def require_api_key(
     expected = os.environ.get("API_KEY", "").strip()
     if not expected:
         return
-    token = None
+    token = ""
     if authorization and authorization.lower().startswith("bearer "):
         token = authorization[7:].strip()
     elif x_api_key:
         token = x_api_key.strip()
-    if token != expected:
+    token_b = token.encode("utf-8")
+    expected_b = expected.encode("utf-8")
+    if len(token_b) != len(expected_b):
+        hmac.compare_digest(expected_b, expected_b)
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    if not hmac.compare_digest(token_b, expected_b):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
@@ -209,7 +215,7 @@ def _model_version(card: dict | None) -> str | None:
     return None
 
 
-@app.get("/", response_model=ServiceInfoResponse)
+@app.get("/", response_model=ServiceInfoResponse, response_model_by_alias=True)
 def root() -> ServiceInfoResponse:
     return ServiceInfoResponse(
         service="netanomaly",
@@ -217,7 +223,7 @@ def root() -> ServiceInfoResponse:
         docs="/docs",
         health="/health",
         ready="/ready",
-        schema="/schema",
+        schema_url="/schema",
         ui="/ui",
     )
 
@@ -227,7 +233,10 @@ def console_ui() -> FileResponse:
     index = STATIC_DIR / "index.html"
     if not index.exists():
         raise HTTPException(404, "UI files are missing from this image.")
-    return FileResponse(index)
+    return FileResponse(
+        index,
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @app.get("/health", response_model=HealthResponse)

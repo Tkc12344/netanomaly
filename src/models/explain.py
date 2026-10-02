@@ -29,6 +29,21 @@ def _top_contributions(
     return items[:top_k]
 
 
+def _tree_inputs(model, X: pd.DataFrame) -> tuple[object, pd.DataFrame]:
+    """Unwrap sklearn Pipelines so TreeExplainer sees the tree, not the wrapper."""
+    if not isinstance(model, Pipeline):
+        return model, X
+    estimator = model.steps[-1][1]
+    if len(model.steps) == 1:
+        return estimator, X
+    transformed = model[:-1].transform(X)
+    columns = list(X.columns)
+    if getattr(transformed, "shape", (0, 0))[1] != len(columns):
+        columns = [f"f{i}" for i in range(transformed.shape[1])]
+    X_explain = pd.DataFrame(transformed, columns=columns, index=X.index)
+    return estimator, X_explain
+
+
 def explain_instance(
     model, X_row: pd.DataFrame, top_k: int = 15
 ) -> tuple[list[dict], str]:
@@ -53,8 +68,9 @@ def explain_instance(
             "shap is not installed; tree explanations require `pip install shap`"
         ) from exc
 
-    explainer = shap.TreeExplainer(model)
-    raw = explainer.shap_values(X_row)
+    estimator, X_explain = _tree_inputs(model, X_row)
+    explainer = shap.TreeExplainer(estimator)
+    raw = explainer.shap_values(X_explain)
     if isinstance(raw, list):
         values = np.asarray(raw[1] if len(raw) > 1 else raw[0])
     elif hasattr(raw, "values"):
@@ -64,7 +80,7 @@ def explain_instance(
     if values.ndim == 3:
         values = values[:, :, -1]
     row = values[0]
-    return _top_contributions(list(X_row.columns), row, top_k), "shap"
+    return _top_contributions(list(X_explain.columns), row, top_k), "shap"
 
 
 def explain_model(model, X_sample: pd.DataFrame, max_rows: int = 500):
@@ -74,8 +90,9 @@ def explain_model(model, X_sample: pd.DataFrame, max_rows: int = 500):
         raise RuntimeError("shap is not installed. Run `pip install shap`.") from exc
 
     X_sample = X_sample.sample(n=min(max_rows, len(X_sample)), random_state=42)
-    explainer = shap.TreeExplainer(model)
-    shap_values = explainer.shap_values(X_sample)
+    estimator, X_explain = _tree_inputs(model, X_sample)
+    explainer = shap.TreeExplainer(estimator)
+    shap_values = explainer.shap_values(X_explain)
 
     # For binary classifiers, shap_values is a list [class0, class1] in
     # older SHAP versions; normalize to the positive-class contributions.
@@ -83,7 +100,7 @@ def explain_model(model, X_sample: pd.DataFrame, max_rows: int = 500):
 
     mean_abs_shap = np.abs(values).mean(axis=0)
     importance = (
-        pd.Series(mean_abs_shap, index=X_sample.columns)
+        pd.Series(mean_abs_shap, index=X_explain.columns)
         .sort_values(ascending=False)
     )
     logger.info("Top contributing features:\n%s", importance.head(10))

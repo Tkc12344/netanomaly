@@ -8,7 +8,8 @@ ENV PATH="/opt/venv/bin:$PATH"
 COPY requirements.txt .
 # Runtime image skips optional/dev packages. Keep httpx — the train Job
 # in this same image fetches CICIDS via Hugging Face /rows.
-RUN grep -vE '^(shap|torch|pytest|matplotlib|ruff)' requirements.txt > requirements.runtime.txt \
+# Keep shap so /explain works on trees in this image. Skip torch/dev extras.
+RUN grep -vE '^(torch|pytest|matplotlib|ruff)' requirements.txt > requirements.runtime.txt \
     && pip install --no-cache-dir -r requirements.runtime.txt
 
 # --- runtime stage ---

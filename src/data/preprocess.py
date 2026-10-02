@@ -113,8 +113,12 @@ def to_numeric_only(df: pd.DataFrame) -> pd.DataFrame:
     keep = [c for c in config.NON_FEATURE_COLUMNS if c in df.columns]
     protected = df[keep]
     features = df.drop(columns=keep)
-    numeric_features = features.select_dtypes(include=[np.number])
-    dropped = set(features.columns) - set(numeric_features.columns)
+    for col in list(features.columns):
+        if not pd.api.types.is_numeric_dtype(features[col]):
+            features[col] = pd.to_numeric(features[col], errors="coerce")
+    features = features.replace([np.inf, -np.inf], np.nan)
+    numeric_features = features.select_dtypes(include=[np.number]).fillna(0)
+    dropped = set(df.drop(columns=keep).columns) - set(numeric_features.columns)
     if dropped:
         logger.info("Dropping non-numeric feature columns: %s", dropped)
     result = numeric_features.copy()
